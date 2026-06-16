@@ -19,7 +19,7 @@ Controls the lock directly over Bluetooth Low Energy. A one-time cloud sign-in i
 ## Requirements
 
 - Home Assistant 2024.1+ with the Bluetooth integration
-- A Bluetooth adapter on the Home Assistant host within range of the lock. A **local adapter is recommended** — this lock's handshake is not reliable through ESPHome Bluetooth proxies.
+- Bluetooth coverage of the lock — either a local adapter on the Home Assistant host or an ESPHome Bluetooth proxy in range. Home Assistant routes automatically; no adapter is "forced."
 - A Tuya / Smart Life (Kohree) account with the lock already added, used **once** during setup to retrieve local credentials.
 
 ## Installation (HACS)

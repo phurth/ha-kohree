@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import platform
 import time
 from datetime import timedelta
 
@@ -79,43 +78,6 @@ def _entry_opt(entry: ConfigEntry, key: str, default):
     if key in entry.options:
         return entry.options[key]
     return entry.data.get(key, default)
-
-
-async def _get_local_adapter_macs() -> set[str]:
-    """Return MAC addresses of local BlueZ HCI adapters via D-Bus ObjectManager.
-
-    Returns empty set on non-Linux or if D-Bus is unavailable.
-    """
-    macs: set[str] = set()
-    if platform.system() != "Linux":
-        return macs
-    try:
-        from dbus_fast import BusType, Message, MessageType  # noqa: PLC0415
-        from dbus_fast.aio import MessageBus  # noqa: PLC0415
-        bus = await MessageBus(bus_type=BusType.SYSTEM).connect()
-        try:
-            reply = await bus.call(
-                Message(
-                    destination="org.bluez",
-                    path="/",
-                    interface="org.freedesktop.DBus.ObjectManager",
-                    member="GetManagedObjects",
-                )
-            )
-            if reply.message_type != MessageType.ERROR and reply.body:
-                for interfaces in reply.body[0].values():
-                    adapter = interfaces.get("org.bluez.Adapter1")
-                    if adapter:
-                        addr = adapter.get("Address")
-                        if addr is not None:
-                            if hasattr(addr, "value"):
-                                addr = addr.value
-                            macs.add(str(addr).upper())
-        finally:
-            bus.disconnect()
-    except Exception as exc:  # noqa: BLE001
-        _LOGGER.debug("_get_local_adapter_macs: D-Bus unavailable: %s", exc)
-    return macs
 
 
 class KohreeCoordinator(DataUpdateCoordinator[None]):
@@ -442,38 +404,14 @@ class KohreeCoordinator(DataUpdateCoordinator[None]):
                 self.async_set_updated_data(None)
                 return
 
-            # Force local HCI adapter — GATT notifications do not relay reliably
-            # through ESPHome BLE proxies.  Prefer any local adapter over a proxy.
-            local_macs = await _get_local_adapter_macs()
-            _LOGGER.info("Kohree %s: local adapter MACs: %s", self.address, local_macs)
-            ble_device = None
-            if local_macs:
-                for _connectable in (True, False):
-                    candidates = bluetooth.async_scanner_devices_by_address(
-                        self.hass, self.address, connectable=_connectable
-                    )
-                    local_candidate = next(
-                        (c for c in candidates
-                         if c.scanner.source.upper() in local_macs),
-                        None,
-                    )
-                    if local_candidate is not None:
-                        ble_device = local_candidate.ble_device
-                        _LOGGER.info(
-                            "Kohree %s: using local adapter %s (connectable=%s)",
-                            self.address, local_candidate.scanner.source, _connectable,
-                        )
-                        break
-                if ble_device is None:
-                    _LOGGER.info(
-                        "Kohree %s: no local adapter found, falling back to HA routing",
-                        self.address,
-                    )
-
-            if ble_device is None:
-                ble_device = async_ble_device_from_address(
-                    self.hass, self.address, connectable=True
-                )
+            # Resolve via HA's Bluetooth manager, which routes through the best
+            # available connectable source — a local adapter or an ESPHome proxy.
+            # No adapter forcing is needed: the lock authenticates at the Tuya
+            # application layer (no OS-level bonding), and the handshake — incl.
+            # multi-packet notify reassembly — works over proxies (validated).
+            ble_device = async_ble_device_from_address(
+                self.hass, self.address, connectable=True
+            )
             if ble_device is None:
                 ble_device = async_ble_device_from_address(
                     self.hass, self.address, connectable=False

@@ -20,8 +20,11 @@ open-source `tuya-ble` Home Assistant projects.
 | Read | `00000003-0000-1001-8001-00805f9b07d0` |
 
 The notify characteristic carries a single CCCD descriptor (`00002902`).
-A **local Bluetooth adapter is recommended** — the handshake is not reliable
-through ESPHome Bluetooth proxies.
+The connection works over either a local Bluetooth adapter or an ESPHome
+Bluetooth proxy — the integration does not force an adapter; Home Assistant's
+Bluetooth manager selects the best available connectable source. (The lock
+authenticates at the application layer with no OS-level bonding, and
+multi-packet notify reassembly relays correctly through proxies.)
 
 ## 2. Cryptography & Framing
 
