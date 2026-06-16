@@ -455,7 +455,25 @@ class KohreeCoordinator(DataUpdateCoordinator[None]):
                 self.address,
             )
             await asyncio.sleep(CONNECT_SETTLE_DELAY_SECONDS)
-            profile = self._resolve_gatt_profile(client)
+            try:
+                profile = self._resolve_gatt_profile(client)
+            except (BleakError, OSError) as err:
+                # This lock self-disconnects ~2s after connect; occasionally it
+                # drops within milliseconds of establish_connection returning,
+                # before service discovery is readable. bleak then raises
+                # "Service Discovery has not been performed yet" on
+                # client.services. Treat it as a transient connect miss (same
+                # graceful path as an establish_connection failure) so the poll
+                # retries next interval instead of bubbling up to the
+                # coordinator and flipping entities to unavailable.
+                self._last_error = f"GATT profile resolve failed: {err}"
+                _LOGGER.warning("Kohree %s: %s", self.address, self._last_error)
+                await self._safe_disconnect(client)
+                self._client = None
+                self._connected = False
+                self._notify_enabled = False
+                self.async_set_updated_data(None)
+                return
             if profile is None:
                 self._last_error = (
                     "No supported GATT profile found "
