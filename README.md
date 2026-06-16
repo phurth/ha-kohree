@@ -11,6 +11,8 @@ Controls the lock directly over Bluetooth Low Energy. A one-time cloud sign-in i
 | Entity | Type | Notes |
 |--------|------|-------|
 | Lock / Unlock | `lock` | Deadbolt control over BLE. Uses optimistic state (see notes). |
+| Lock | `button` | Drives the bolt to locked unconditionally, regardless of the displayed state. |
+| Unlock | `button` | Drives the bolt to unlocked unconditionally, regardless of the displayed state. |
 | Battery | `sensor` | Battery percentage; persists across restarts. |
 | Connected | `binary_sensor` | BLE connection status (diagnostic). |
 | Reconnect | `button` | Force a reconnect/refresh (diagnostic). |
@@ -54,6 +56,7 @@ The poll interval is configurable (1–120 minutes, default 5) both during setup
 - **Local key rotates on re-pairing.** If you remove and re-add the lock in the Smart Life app, re-run the integration setup to fetch the new key.
 - **Manual thumb-turn is not reported.** The lock only reports state changes for *electronic* actuation (app, keypad, fingerprint) — not a physical turn of the thumb-turn. This is a hardware limitation (the Kohree / Smart Life app can't see it either), so the lock entity uses assumed state.
 - **Command latency.** Because the lock is asleep between polls, each lock/unlock waits for a brief Bluetooth connect + handshake (typically a few seconds) before the bolt moves.
+- **Dedicated Lock / Unlock buttons.** Because state is assumed, the `lock` entity's toggle can disagree with the bolt's true position. The separate **Lock** and **Unlock** buttons each send the absolute command directly, so you can force either action without first correcting the displayed state.
 - Use the **Disconnect** button to free the lock for the Smart Life app (e.g. to add a PIN or fingerprint); **Reconnect** resumes Home Assistant control.
 
 ## License

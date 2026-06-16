@@ -37,10 +37,64 @@ async def async_setup_entry(
 
     async_add_entities(
         [
+            KohreeLockButton(coordinator, address, device_name),
+            KohreeUnlockButton(coordinator, address, device_name),
             KohreeReconnectButton(coordinator, address, device_name),
             KohreeDisconnectButton(coordinator, address, device_name),
         ]
     )
+
+
+class KohreeLockButton(CoordinatorEntity[KohreeCoordinator], ButtonEntity):
+    """Unconditionally drive the deadbolt to locked.
+
+    Independent of the displayed (assumed) lock state, so it works even if
+    state has drifted — no toggle round-trip needed.
+    """
+
+    _attr_has_entity_name = True
+    _attr_name = "Lock"
+    _attr_icon = "mdi:lock"
+
+    def __init__(
+        self,
+        coordinator: KohreeCoordinator,
+        address: str,
+        device_name: str,
+    ) -> None:
+        super().__init__(coordinator)
+        mac = address.replace(":", "").lower()
+        self._attr_unique_id = f"{mac}_lock_button"
+        self._attr_device_info = _device_info(address, device_name)
+
+    async def async_press(self) -> None:
+        await self.coordinator.async_lock()
+
+
+class KohreeUnlockButton(CoordinatorEntity[KohreeCoordinator], ButtonEntity):
+    """Unconditionally drive the deadbolt to unlocked.
+
+    Independent of the displayed (assumed) lock state, so it works even if
+    state has drifted — no toggle round-trip needed.
+    """
+
+    _attr_has_entity_name = True
+    _attr_name = "Unlock"
+    _attr_icon = "mdi:lock-open-variant"
+
+    def __init__(
+        self,
+        coordinator: KohreeCoordinator,
+        address: str,
+        device_name: str,
+    ) -> None:
+        super().__init__(coordinator)
+        mac = address.replace(":", "").lower()
+        self._attr_unique_id = f"{mac}_unlock_button"
+        self._attr_device_info = _device_info(address, device_name)
+
+    async def async_press(self) -> None:
+        await self.coordinator.async_unlock()
 
 
 class KohreeReconnectButton(CoordinatorEntity[KohreeCoordinator], ButtonEntity):
