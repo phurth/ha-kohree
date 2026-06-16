@@ -1,0 +1,27 @@
+# Internal / dev-only — not shipped
+CLAUDE.md
+
+# Large / non-distributable artifacts
+tuya_smart_life_7.8.4_decompiled/
+*.cfa
+*.apk
+*.xapk
+
+# Logs and captures
+*.log
+*.log.*
+*.pcap
+*.btsnoop
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+
+# Editor / OS
+.DS_Store
+*.swp
+.vscode/
+.idea/

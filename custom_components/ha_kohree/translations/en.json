@@ -1,0 +1,64 @@
+{
+  "config": {
+    "step": {
+      "confirm": {
+        "title": "Configure {name}",
+        "description": "A Kohree lock was discovered:\n\n**{name}** ({address})\n\nContinue to import one-time Tuya cloud credentials via QR login. Runtime control stays local over BLE."
+      },
+      "cloud_live": {
+        "title": "Tuya Live Auth",
+        "description": "Enter your Tuya User Code from Smart Life/Tuya. A one-time QR login will be generated for **{name}**.\n\n{error}",
+        "data": {
+          "tuya_user_code": "Tuya User Code"
+        }
+      },
+      "scan": {
+        "title": "Scan Tuya Login QR",
+        "description": "Scan this code in Smart Life/Tuya to authorize one-time credential import for **{name}**, then submit this step.\n\n{error}",
+        "data": {
+          "qr": "Tuya login QR"
+        }
+      },
+      "choose_cloud_device": {
+        "title": "Choose Cloud Device",
+        "description": "Multiple cloud devices were found. Choose the lock to import for **{name}**.",
+        "data": {
+          "device_id": "Tuya cloud device"
+        }
+      },
+      "local": {
+        "title": "Local BLE Setup",
+        "description": "Finalize local BLE connection settings for **{name}**. HA connects briefly each interval to read state and battery, then the lock sleeps.",
+        "data": {
+          "address": "Bluetooth MAC address",
+          "device_name": "Display name (optional)",
+          "poll_interval_minutes": "Poll interval (minutes)"
+        }
+      }
+    },
+    "error": {
+      "invalid_user_code": "Enter your Tuya User Code.",
+      "cloud_auth_unavailable": "Tuya cloud auth dependency is unavailable.",
+      "qr_code_error": "Unable to generate Tuya login QR code.",
+      "login_error": "Tuya cloud login failed. Confirm the QR code was scanned and approved.",
+      "no_cloud_devices": "No Tuya cloud devices with local bootstrap keys were found."
+    },
+    "abort": {
+      "already_configured": "This lock is already configured.",
+      "not_supported": "This Bluetooth device does not match Kohree discovery rules.",
+      "no_device": "No discovery information is available for this flow.",
+      "address_mismatch": "The selected Bluetooth address does not match the discovered device."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Kohree Options",
+        "description": "HA connects briefly each interval to read battery and state, then the lock sleeps. A shorter interval is fresher but lights the unit's connect LED and wakes its radio more often.",
+        "data": {
+          "poll_interval_minutes": "Poll interval (minutes)"
+        }
+      }
+    }
+  }
+}

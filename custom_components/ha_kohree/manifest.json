@@ -1,0 +1,41 @@
+{
+  "domain": "ha_kohree",
+  "name": "Kohree Smart RV Lock",
+  "bluetooth": [
+    {
+      "local_name": "KOHREE*",
+      "connectable": true
+    },
+    {
+      "service_uuid": "0000fff0-0000-1000-8000-00805f9b34fb",
+      "connectable": true
+    },
+    {
+      "service_data_uuid": "0000fd50-0000-1000-8000-00805f9b34fb",
+      "connectable": true
+    },
+    {
+      "manufacturer_id": 2000,
+      "connectable": true
+    }
+  ],
+  "codeowners": [
+    "@phurth"
+  ],
+  "config_flow": true,
+  "dependencies": [
+    "bluetooth",
+    "bluetooth_adapters"
+  ],
+  "documentation": "https://github.com/phurth/ha-kohree",
+  "integration_type": "device",
+  "iot_class": "local_polling",
+  "issue_tracker": "https://github.com/phurth/ha-kohree/issues",
+  "requirements": [
+    "bleak>=0.21.0",
+    "bleak-retry-connector>=3.1.0",
+    "pycryptodome>=3.20.0",
+    "tuya-device-sharing-sdk~=0.2.4"
+  ],
+  "version": "1.0.0"
+}
