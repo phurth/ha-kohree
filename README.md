@@ -33,9 +33,10 @@ Controls the lock directly over Bluetooth Low Energy. A one-time cloud sign-in i
 
 1. Go to **Settings → Devices & Services → Add Integration → Kohree Smart RV Lock**
    (the lock may also auto-discover and appear as a "Discovered" device).
-2. When prompted, enter your **Tuya / Smart Life user code** and scan the generated **QR code** with the Smart Life (or Kohree) app to authorize a one-time login.
-3. The integration retrieves the lock's local key and unlock passcode from the cloud, then selects the lock and finalizes the local BLE connection.
-4. Set the **poll interval** (default 5 minutes) — see below.
+2. When prompted, enter your **Tuya / Smart Life user code** (Me > Top Right Settings Menu > Account and Security > User Code)
+3. Scan the generated **QR code** with the Smart Life (or Kohree) app to authorize a one-time login (scan icon at the top of the Tyua app main screen).
+4. The integration retrieves the lock's local key and unlock passcode from the cloud, then selects the lock and finalizes the local BLE connection.
+5. Set the **poll interval** (default 5 minutes) — see below.
 
 Credentials are fetched only once at setup and stored locally; the cloud is not contacted during normal operation.
 
