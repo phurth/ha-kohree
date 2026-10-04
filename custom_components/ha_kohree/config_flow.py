@@ -37,10 +37,10 @@ from homeassistant.helpers.selector import (
 from .const import (
     CONF_DEVICE_NAME,
     CONF_ONBOARDING_MODE,
-    CONF_POLL_INTERVAL_MINUTES,
-    DEFAULT_POLL_INTERVAL_MINUTES,
-    MAX_POLL_INTERVAL_MINUTES,
-    MIN_POLL_INTERVAL_MINUTES,
+    CONF_BATTERY_REFRESH_HOURS,
+    DEFAULT_BATTERY_REFRESH_HOURS,
+    MAX_BATTERY_REFRESH_HOURS,
+    MIN_BATTERY_REFRESH_HOURS,
     CONF_TUYA_DEV_ID,
     CONF_TUYA_LOCAL_KEY,
     CONF_TUYA_PRODUCT_ID,
@@ -72,18 +72,23 @@ def _normalize_address(address: str) -> str:
     return value
 
 
-def _poll_interval_schema(interval_default: int) -> dict:
-    """Shared voluptuous field for the poll interval (onboarding + options)."""
+def _battery_refresh_schema(refresh_default: int) -> dict:
+    """Shared voluptuous field for the battery refresh (onboarding + options).
+
+    The lock is only connected to when there is something to do, so this is the
+    one periodic wake-up left: a slow reconnect purely to re-read the battery.
+    Zero disables it, leaving commands as the only time the radio is woken.
+    """
     return {
         vol.Required(
-            CONF_POLL_INTERVAL_MINUTES, default=interval_default
+            CONF_BATTERY_REFRESH_HOURS, default=refresh_default
         ): NumberSelector(
             NumberSelectorConfig(
-                min=MIN_POLL_INTERVAL_MINUTES,
-                max=MAX_POLL_INTERVAL_MINUTES,
+                min=MIN_BATTERY_REFRESH_HOURS,
+                max=MAX_BATTERY_REFRESH_HOURS,
                 step=1,
                 mode=NumberSelectorMode.BOX,
-                unit_of_measurement="min",
+                unit_of_measurement="h",
             )
         ),
     }
@@ -200,8 +205,8 @@ class KohreeConfigFlow(ConfigFlow, domain=DOMAIN):
             CONF_ADDRESS: address,
             CONF_DEVICE_NAME: device_name,
             CONF_ONBOARDING_MODE: ONBOARDING_MODE_CLOUD,
-            CONF_POLL_INTERVAL_MINUTES: self._onboarding_data.get(
-                CONF_POLL_INTERVAL_MINUTES, DEFAULT_POLL_INTERVAL_MINUTES
+            CONF_BATTERY_REFRESH_HOURS: self._onboarding_data.get(
+                CONF_BATTERY_REFRESH_HOURS, DEFAULT_BATTERY_REFRESH_HOURS
             ),
         }
         for key in TUYA_CLOUD_BOOTSTRAP_KEYS:
@@ -499,9 +504,9 @@ class KohreeConfigFlow(ConfigFlow, domain=DOMAIN):
                     "",
                 )
 
-            self._onboarding_data[CONF_POLL_INTERVAL_MINUTES] = int(
+            self._onboarding_data[CONF_BATTERY_REFRESH_HOURS] = int(
                 user_input.get(
-                    CONF_POLL_INTERVAL_MINUTES, DEFAULT_POLL_INTERVAL_MINUTES
+                    CONF_BATTERY_REFRESH_HOURS, DEFAULT_BATTERY_REFRESH_HOURS
                 )
             )
 
@@ -534,7 +539,7 @@ class KohreeConfigFlow(ConfigFlow, domain=DOMAIN):
                 {
                     address_key: str,
                     name_key: str,
-                    **_poll_interval_schema(DEFAULT_POLL_INTERVAL_MINUTES),
+                    **_battery_refresh_schema(DEFAULT_BATTERY_REFRESH_HOURS),
                 }
             ),
             description_placeholders={
@@ -544,29 +549,30 @@ class KohreeConfigFlow(ConfigFlow, domain=DOMAIN):
 
 
 class KohreeOptionsFlow(OptionsFlow):
-    """Options flow: poll interval."""
+    """Options flow: battery refresh interval."""
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Set the poll interval (minutes)."""
+        """Set how often the lock is woken just to re-read its battery."""
         if user_input is not None:
             return self.async_create_entry(
                 title="",
                 data={
-                    CONF_POLL_INTERVAL_MINUTES: int(
-                        user_input[CONF_POLL_INTERVAL_MINUTES]
+                    **self.config_entry.options,
+                    CONF_BATTERY_REFRESH_HOURS: int(
+                        user_input[CONF_BATTERY_REFRESH_HOURS]
                     ),
                 },
             )
 
-        interval_default = self.config_entry.options.get(
-            CONF_POLL_INTERVAL_MINUTES,
+        refresh_default = self.config_entry.options.get(
+            CONF_BATTERY_REFRESH_HOURS,
             self.config_entry.data.get(
-                CONF_POLL_INTERVAL_MINUTES, DEFAULT_POLL_INTERVAL_MINUTES
+                CONF_BATTERY_REFRESH_HOURS, DEFAULT_BATTERY_REFRESH_HOURS
             ),
         )
         return self.async_show_form(
             step_id="init",
-            data_schema=vol.Schema(_poll_interval_schema(interval_default)),
+            data_schema=vol.Schema(_battery_refresh_schema(refresh_default)),
         )

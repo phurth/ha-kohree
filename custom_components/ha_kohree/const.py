@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import timedelta
 
 DOMAIN = "ha_kohree"
 
@@ -59,20 +58,23 @@ CONNECT_SETTLE_DELAY_SECONDS = 0.2
 # confirming DP report land in-band.  State is already set optimistically on
 # write, so this is short; late reports are still caught by the notify callback.
 COMMAND_SETTLE_SECONDS = 1.0
-# Poll cadence.  This lock does not hold an idle BLE connection — it connects,
-# dumps its DPs (state + battery), and disconnects itself.  So each poll is a
-# brief connect/sync/drop.  The interval bounds how often the unit's connect LED
-# lights and how fresh out-of-band state is; tune against the lock's battery.
-# User-configurable via the options flow (minutes); this is the fallback default.
+# Battery refresh cadence.  Commands connect on demand, so nothing has to be
+# polled to drive the lock; the only thing a periodic connect buys is a fresh
+# battery reading.  Every connect wakes the radio and lights the unit's LED, so
+# keep this slow — each command refreshes the battery for free anyway.  Hours;
+# 0 disables the periodic refresh entirely.
+CONF_BATTERY_REFRESH_HOURS = "battery_refresh_hours"
+DEFAULT_BATTERY_REFRESH_HOURS = 12
+MIN_BATTERY_REFRESH_HOURS = 0
+MAX_BATTERY_REFRESH_HOURS = 168
+
+# Legacy key.  Entries created before connect-on-demand stored a poll interval
+# in minutes.  It is no longer read: periodic polling has been removed.
 CONF_POLL_INTERVAL_MINUTES = "poll_interval_minutes"
-DEFAULT_POLL_INTERVAL_MINUTES = 5
-MIN_POLL_INTERVAL_MINUTES = 1
-MAX_POLL_INTERVAL_MINUTES = 120
-RECONNECT_POLL_INTERVAL = timedelta(minutes=DEFAULT_POLL_INTERVAL_MINUTES)
 
 # NOTE: a "continuous" (always-connected) mode was tried and removed — this lock
 # drops the BLE link ~2s after each sync regardless of USB power, so a held
-# connection is not achievable on this firmware.  Poll is the only viable model.
+# connection is not achievable on this firmware.
 
 # Lock DP map (verified from HCI capture + live testing, product 6m47tkja)
 DP_BLE_UNLOCK = 71      # 0x47  raw  — ble_unlock_check (dynamic BLE unlock)

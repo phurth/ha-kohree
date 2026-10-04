@@ -26,9 +26,9 @@ from .const import (
     CONF_TUYA_UUID,
     CONF_UNLOCK_PASSCODE,
     COMMAND_SETTLE_SECONDS,
-    CONF_POLL_INTERVAL_MINUTES,
+    CONF_BATTERY_REFRESH_HOURS,
     CONNECT_SETTLE_DELAY_SECONDS,
-    DEFAULT_POLL_INTERVAL_MINUTES,
+    DEFAULT_BATTERY_REFRESH_HOURS,
     DEFAULT_UNLOCK_PASSCODE,
     DP_BATTERY,
     DP_BLE_CHECK,
@@ -84,14 +84,22 @@ class KohreeCoordinator(DataUpdateCoordinator[None]):
     """Manage BLE connection state for one Kohree lock."""
 
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
-        minutes = _entry_opt(
-            entry, CONF_POLL_INTERVAL_MINUTES, DEFAULT_POLL_INTERVAL_MINUTES
+        # Connect-on-demand: commands open their own session, so the only
+        # periodic work left is an optional slow battery refresh.
+        refresh_hours = _entry_opt(
+            entry, CONF_BATTERY_REFRESH_HOURS, DEFAULT_BATTERY_REFRESH_HOURS
         )
+        try:
+            refresh_hours = int(refresh_hours)
+        except (TypeError, ValueError):
+            refresh_hours = DEFAULT_BATTERY_REFRESH_HOURS
         super().__init__(
             hass,
             _LOGGER,
             name=f"Kohree {entry.data[CONF_ADDRESS]}",
-            update_interval=timedelta(minutes=minutes),
+            update_interval=(
+                timedelta(hours=refresh_hours) if refresh_hours > 0 else None
+            ),
         )
         self._entry = entry
         self.address: str = entry.data[CONF_ADDRESS]
@@ -134,7 +142,14 @@ class KohreeCoordinator(DataUpdateCoordinator[None]):
         # Command delivery / persistent connection
         self._paired_event = asyncio.Event()
         self._pending_dp: tuple[int, int, bytes, str] | None = None
-        self._want_connected = False  # whether polling should (re)connect
+        # Monotonic command generation.  A command bumps this when it is
+        # requested, then re-checks it before writing: if a newer command has
+        # arrived meanwhile, the older one is abandoned instead of being sent
+        # late.  Without this, pressing a second button during a slow connect
+        # queued both, and they actuated back to back — an unlock followed a
+        # second later by the lock that superseded it.
+        self._cmd_generation: int = 0
+        self._want_connected = False  # whether the battery refresh may (re)connect
         self._connect_lock = asyncio.Lock()
         self._command_lock = asyncio.Lock()
         # Guards the actual GATT write loop so multi-packet MTP frames are never
@@ -228,9 +243,10 @@ class KohreeCoordinator(DataUpdateCoordinator[None]):
         """Start coordinator: do an initial connect + sync.
 
         The lock connects, dumps its DPs (state + battery), and disconnects
-        itself, so this is a one-shot connect; the periodic poll
-        (_async_update_data) refreshes on the configured interval.  ``_want_connected``
-        gates whether polling reconnects (cleared by the Disconnect "pause" button).
+        itself, so this is a one-shot connect to seed state at startup.  After
+        that the integration only connects on demand — for a command, or for the
+        slow battery refresh.  ``_want_connected`` gates that refresh (cleared by
+        the Disconnect "pause" button).
         """
         self._want_connected = True
         await self._async_ensure_connected()
@@ -280,9 +296,28 @@ class KohreeCoordinator(DataUpdateCoordinator[None]):
         actuates, not after waiting for the confirming report.  Any DP report that
         follows is still handled by the notification callback while the connection
         lingers, correcting the state if the command didn't take.
+
+        Last press wins: a command superseded by a newer one while it waited for
+        the connection is dropped rather than actuated late.
         """
+        self._cmd_generation += 1
+        generation = self._cmd_generation
+
         async with self._command_lock:
+            if generation != self._cmd_generation:
+                _LOGGER.info(
+                    "Kohree %s: %s superseded while queued — not sending",
+                    self.address, desc,
+                )
+                return
             await self._async_connect_and_auth(desc)
+            # The connect can take seconds; re-check before touching the bolt.
+            if generation != self._cmd_generation:
+                _LOGGER.info(
+                    "Kohree %s: %s superseded during connect — not sending",
+                    self.address, desc,
+                )
+                return
             self._dp_counter += 1
             try:
                 packets = build_dp_command(
@@ -301,13 +336,18 @@ class KohreeCoordinator(DataUpdateCoordinator[None]):
             # Brief settle so the confirming report can land within this command's
             # lock; late reports are still processed by the notification callback.
             await asyncio.sleep(COMMAND_SETTLE_SECONDS)
+            # Deliberately do NOT disconnect here.  This lock expects to end the
+            # link itself (~2s after a sync) and stopped accepting connections
+            # for minutes after a central-initiated disconnect, which broke every
+            # subsequent command.  Letting it drop costs ~1s of radio.
 
     async def _async_ensure_connected(self) -> None:
         """Connect + authenticate + run the on-connect DP sync (best-effort).
 
         After auth, replays the app's sync so the lock pushes its DP reports
         (state + battery).  The lock then disconnects itself shortly after; we do
-        not hold the link (see poll model).
+        not hold the link; callers release it when the session has served
+        its purpose.
         """
         if not self._want_connected:
             return
@@ -315,10 +355,11 @@ class KohreeCoordinator(DataUpdateCoordinator[None]):
             if self._is_paired and self._client is not None and self._client.is_connected:
                 return
             try:
-                await self._async_connect_and_auth("poll")
+                await self._async_connect_and_auth("refresh")
             except HomeAssistantError as err:
                 _LOGGER.info(
-                    "Kohree %s: connect failed, will retry next poll: %s",
+                    "Kohree %s: connect failed, will retry on the next command "
+                    "or battery refresh: %s",
                     self.address, err,
                 )
                 return
@@ -372,6 +413,14 @@ class KohreeCoordinator(DataUpdateCoordinator[None]):
         await self._async_disconnect()
         self._paired_event.clear()
         await self._async_connect()
+        if self._client is None or not self._connected:
+            # _async_connect reports failures by returning, so without this the
+            # code waits 15s for a pairing event that cannot arrive and then
+            # blames authentication for what was really a failed connect.
+            raise HomeAssistantError(
+                f"Kohree {self.address}: {desc} — could not connect"
+                + (f": {self._last_error}" if self._last_error else "")
+            )
         try:
             await asyncio.wait_for(self._paired_event.wait(), timeout=15)
         except (TimeoutError, asyncio.TimeoutError) as err:
@@ -384,14 +433,20 @@ class KohreeCoordinator(DataUpdateCoordinator[None]):
             )
 
     async def _async_update_data(self) -> None:
-        """Periodic poll (every configured interval) — connect + sync.
+        """Slow battery refresh — the only periodic work left.
 
-        This lock does not hold an idle connection — after a fresh connect + DP
-        sync it dumps its state (incl. battery) and disconnects itself.  We do
-        NOT auto-reconnect on that drop; the next tick handles it, keeping the
-        lock's radio asleep between polls and bounding the connect-LED to once
-        per interval.
+        Lock and unlock open their own session (see ``async_send_dp``), so
+        nothing needs polling to drive the lock.  A connect is worth making only
+        to refresh the battery reading, and every connect wakes the radio and
+        lights the unit's LED, so this runs on the order of hours and is
+        disabled entirely when the interval is 0.
+
+        The link is released as soon as the lock's reports have landed rather
+        than waiting for the lock to drop it, keeping the radio on for the
+        shortest time we can manage.
         """
+        if not self._want_connected:
+            return None
         await self._async_ensure_connected()
         return None
 
@@ -463,8 +518,8 @@ class KohreeCoordinator(DataUpdateCoordinator[None]):
                 # before service discovery is readable. bleak then raises
                 # "Service Discovery has not been performed yet" on
                 # client.services. Treat it as a transient connect miss (same
-                # graceful path as an establish_connection failure) so the poll
-                # retries next interval instead of bubbling up to the
+                # graceful path as an establish_connection failure) so the
+                # next command or refresh retries, instead of bubbling up to the
                 # coordinator and flipping entities to unavailable.
                 self._last_error = f"GATT profile resolve failed: {err}"
                 _LOGGER.warning("Kohree %s: %s", self.address, self._last_error)
@@ -667,8 +722,9 @@ class KohreeCoordinator(DataUpdateCoordinator[None]):
         self._paired_event.clear()
         self.async_set_updated_data(None)
         # Do NOT auto-reconnect — this lock disconnects itself right after each
-        # sync dump, so reconnecting on drop produces a tight LED loop.  The
-        # periodic poll (_async_update_data) re-establishes on its own cadence.
+        # sync dump, so reconnecting on drop produces a tight LED loop.  The next
+        # command (or the slow battery refresh) connects again when there is
+        # actually something to do.
 
     def _resolve_gatt_profile(
         self, client: BleakClient
@@ -881,7 +937,15 @@ class KohreeCoordinator(DataUpdateCoordinator[None]):
     def _handle_dp_report(self, data: bytes) -> None:
         """Parse a DP status report and update lock/battery state."""
         for dp_id, dp_type, value in parse_dp_report(data):
-            ivalue = int.from_bytes(value, "big") if value else 0
+            if not value:
+                # An empty payload is not a reading.  Decoding it as 0 used to
+                # publish "battery 0%" and read dp47 as locked.
+                _LOGGER.debug(
+                    "Kohree %s: dp%d reported with an empty value — ignoring",
+                    self.address, dp_id,
+                )
+                continue
+            ivalue = int.from_bytes(value, "big")
             if dp_id == DP_MOTOR_STATE:
                 # lock_motor_state (authoritative bolt position): 0=locked, 1=unlocked
                 self._lock_state = ivalue == 0

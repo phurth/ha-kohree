@@ -32,7 +32,7 @@
         "data": {
           "address": "Bluetooth MAC address",
           "device_name": "Display name (optional)",
-          "poll_interval_minutes": "Poll interval (minutes)"
+          "battery_refresh_hours": "Battery refresh (hours, 0 = never)"
         }
       }
     },
@@ -56,7 +56,7 @@
         "title": "Kohree Options",
         "description": "HA connects briefly each interval to read battery and state, then the lock sleeps. A shorter interval is fresher but lights the unit's connect LED and wakes its radio more often.",
         "data": {
-          "poll_interval_minutes": "Poll interval (minutes)"
+          "battery_refresh_hours": "Battery refresh (hours, 0 = never)"
         }
       }
     }
